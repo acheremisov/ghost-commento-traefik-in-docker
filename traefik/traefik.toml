@@ -1,0 +1,32 @@
+[log]
+level = "INFO"
+
+# Allowing port 80 for redirect to HTTPS
+[entryPoints.http]
+  address = ":80"
+
+[entryPoints.https]
+  address = ":443"
+
+# --------- Docker ----------
+
+[providers.docker]
+  endpoint = "unix:///var/run/docker.sock"
+  exposedByDefault = false
+
+[providers.file]
+  directory = "/etc/traefik/dynamic/"
+  watch = true
+
+[api]
+
+# --------- Let's Encrypt TLS Challenge ----------
+
+[certificatesResolvers.lencrypt.acme]
+  storage = "acme.json"
+  # You can use this variable during testing to avoid rate ban from Let's Encrypt
+  # caServer = "https://acme-staging-v02.api.letsencrypt.org/directory"
+[certificatesResolvers.lencrypt.acme.tlsChallenge]
+
+    
+

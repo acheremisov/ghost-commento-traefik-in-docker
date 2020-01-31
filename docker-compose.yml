@@ -1,0 +1,222 @@
+# Ghost blog with comments via Traefik 2.x in Docker
+# Blog post at https://blog.cybersec.pro/ghost-blog-with-comments-via-traefik-2-x/
+
+version: '3.3'
+
+services:
+########################################################################################
+# MySQL
+# https://hub.docker.com/_/mysql
+########################################################################################
+
+  mysql-ghost:
+    image: mysql:5.7
+    logging:
+      options:
+        max-size: 50m
+    restart: unless-stopped
+    volumes:
+      - ${PWD}/mysql-ghost:/var/lib/mysql
+    networks:
+      - internal
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_GHOST_ROOT_PASSWORD}
+      MYSQL_USER: ${MYSQL_GHOST_USER}
+      MYSQL_PASSWORD: ${MYSQL_GHOST_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_GHOST_DATABASE}
+    container_name: mysql-ghost
+
+########################################################################################
+# Traefik
+# https://hub.docker.com/_/traefik
+########################################################################################
+
+  traefik:
+    image: traefik:latest
+    hostname: traefik
+    logging:
+      options:
+        max-size: 50m
+    env_file:
+      - .env
+    ports:
+      - 80:80
+      - 443:443
+    labels:
+      # Webpanel access
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`traefik.$DOMAIN`)"
+      - "traefik.http.routers.api.entrypoints=https,http"
+      - "traefik.http.routers.api.service=api@internal"
+      - "traefik.http.routers.api.tls=true"
+      # Webpanel authentication
+      - "traefik.http.routers.api.middlewares=user-auth,gzip"
+      - "traefik.http.middlewares.user-auth.basicauth.users=$TRAEFIK_USER_AUTH"
+      # GZip compression for traffic
+      - "traefik.http.middlewares.gzip.compress=true"
+      # Use certificate from Let's Encrypt
+      - "traefik.http.routers.api.tls.certresolver=lencrypt"
+      # Global redirect to https
+      - "traefik.http.routers.http-redirect-to-https.rule=hostregexp(`{host:.+}`)"
+      - "traefik.http.routers.http-redirect-to-https.entrypoints=http"
+      - "traefik.http.routers.http-redirect-to-https.middlewares=redirect-to-https"
+      # ------------> Add your email here <-------------------------
+      - "certificatesresolvers.lencrypt.acme.email=your.email.here@email.com"
+    networks:
+      - ${TRAEFIK_NET}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${PWD}/traefik/traefik.toml:/etc/traefik/traefik.toml:ro
+      - ${PWD}/traefik/acme.json:/acme.json
+      - ${PWD}/traefik/cert:/cert:ro
+      - ${PWD}/traefik/dynamic/:/etc/traefik/dynamic/:ro
+    container_name: traefik
+    restart: unless-stopped
+
+########################################################################################
+# Ghost
+# https://hub.docker.com/_/ghost/
+########################################################################################
+
+  ghost:
+    image: ghost:alpine
+    restart: unless-stopped
+    hostname: ghost
+    logging:
+      options:
+        max-size: 50m
+    volumes:
+      - ${PWD}/ghost:/var/lib/ghost/content
+      # ${PWD}/ghost/custom/post.hbs:/var/lib/ghost/current/content/themes/casper/post.hbs:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ghost.entrypoints=https"
+      - "traefik.docker.network=traefik-public"
+      # Uncomment the next line for Let's Encrypt certificates
+      - "traefik.http.routers.ghost.tls.certresolver=lencrypt"
+      - "traefik.http.routers.ghost.tls=true"
+      - "traefik.http.routers.ghost.rule=Host(`blog.$DOMAIN`)"
+      # Compress Gzip
+      - "traefik.http.routers.ghost.middlewares=gzip"
+    networks:
+      - ${TRAEFIK_NET}
+      - internal
+    environment:
+      logging__level: warn
+      database__client: mysql
+      database__connection__host: mysql-ghost
+      database__connection__user: ${MYSQL_GHOST_USER}
+      database__connection__password: ${MYSQL_GHOST_PASSWORD}
+      database__connection__database: ${MYSQL_GHOST_DATABASE}
+      url: https://blog.$DOMAIN
+    container_name: ghost
+    depends_on:
+      - mysql-ghost
+      - traefik
+
+########################################################################################
+# Watchtower
+# https://github.com/containrrr/watchtower
+########################################################################################
+
+  watchtower: 
+    image: containrrr/watchtower:latest
+    # This schedule applies updates (if available) at midnight.
+    command: --cleanup --schedule "0 0 0 * * *"
+    env_file:
+      - .watchtower
+    restart: always
+    logging:
+      driver: syslog
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    container_name: watchtower
+
+########################################################################################
+# Portainer
+# https://hub.docker.com/r/portainer/portainer/
+########################################################################################
+
+  portainer:
+    image: portainer/portainer:latest
+    container_name: portainer
+    restart: unless-stopped
+    hostname: portainer
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - ${TRAEFIK_NET}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${PWD}/portainer/:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.entrypoints=https"
+      - "traefik.docker.network=traefik-public"
+      # Let's Encrypt certificates
+      - "traefik.http.routers.portainer.tls.certresolver=lencrypt"
+      - "traefik.http.routers.portainer.tls=true"
+      - "traefik.http.routers.portainer.rule=Host(`docker.$DOMAIN`)"
+      # Compress Gzip
+      - "traefik.http.routers.portainer.middlewares=gzip"
+    depends_on:
+      - traefik
+
+########################################################################################
+# Commento
+# https://docs.commento.io/installation/self-hosting/on-your-server/docker.html
+########################################################################################
+
+  commento:
+    image: registry.gitlab.com/commento/commento:latest
+    container_name: commento
+    restart: unless-stopped
+    hostname: commento
+    volumes:
+      - ${PWD}/commento/commento.env:/commento.env:ro
+    environment:
+      COMMENTO_CONFIG_FILE: /commento.env
+      COMMENTO_PORT: 8080
+      COMMENTO_POSTGRES: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresdb:5432/${POSTGRES_DATABASE}?sslmode=disable
+      COMMENTO_ORIGIN: https://commento.$DOMAIN
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.commento.entrypoints=https"
+      - "traefik.docker.network=traefik-public"
+      # Let's Encrypt certificates
+      - "traefik.http.routers.commento.tls.certresolver=lencrypt"
+      - "traefik.http.routers.commento.tls=true"
+      - "traefik.http.routers.commento.rule=Host(`commento.$DOMAIN`)"
+      # Compress Gzip
+      - "traefik.http.routers.commento.middlewares=gzip"
+    depends_on:
+      - postgresdb
+      - traefik
+    networks:
+      - ${TRAEFIK_NET}
+      - internal
+
+########################################################################################
+# Postgres
+# https://hub.docker.com/_/postgres
+########################################################################################
+
+  postgresdb:
+    image: postgres:12-alpine
+    restart: unless-stopped
+    container_name: postgresdb
+    environment:
+      POSTGRES_DB: ${POSTGRES_DATABASE}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASS: ${POSTGRES_PASSWORD}
+    networks:
+      - internal
+    volumes:
+      - ${PWD}/postgres:/var/lib/postgresql/data
+
+networks:
+  traefik-public:
+    external: true
+  internal:
+    external: false
