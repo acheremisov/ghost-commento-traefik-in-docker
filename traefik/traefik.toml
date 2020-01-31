@@ -1,3 +1,7 @@
+[global]
+  # Send anonymous usage data, be a good citizen
+  sendAnonymousUsage = true
+
 [log]
 level = "INFO"
 

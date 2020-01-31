@@ -17,10 +17,3 @@
 
 # [tls.options.default]
 #   minVersion = "VersionTLS11"
-
-#-------------- HTTPS redirect -------------
-
-[http.middlewares]
-  [http.middlewares.redirect-to-https.redirectScheme]
-    scheme = "https"
-    permanent = true

@@ -57,9 +57,11 @@ services:
       # Use certificate from Let's Encrypt
       - "traefik.http.routers.api.tls.certresolver=lencrypt"
       # Global redirect to https
-      - "traefik.http.routers.http-redirect-to-https.rule=hostregexp(`{host:.+}`)"
+      - "traefik.http.routers.http-redirect-to-https.rule=HostRegexp(`{any:.+}`)"
       - "traefik.http.routers.http-redirect-to-https.entrypoints=http"
       - "traefik.http.routers.http-redirect-to-https.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
       # ------------> Add your email here <-------------------------
       - "certificatesresolvers.lencrypt.acme.email=your.email.here@email.com"
     networks:
