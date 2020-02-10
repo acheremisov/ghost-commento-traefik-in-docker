@@ -8,4 +8,9 @@ What you get in the end:
 4. Web panel for Docker management based on [Portainer](https://www.portainer.io/)
 5. Automatic upgrade of docker images overnight from [Watchtower](https://github.com/containrrr/watchtower)
 
+Portainer control panel after implementation:
+![portainer]
+
+[portainer]: https://github.com/acheremisov/ghost-commento-traefik-in-docker/blob/master/final-state.png "Logo Title Text 2"
+
 Pull requests are welcome!
